@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Offline curl double used by tests/run.sh. It understands only the arguments
+# passed by scripts/check.sh and never opens a network connection.
+set -euo pipefail
+
+output_file=''
+headers_file=''
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output)
+      output_file="$2"
+      shift 2
+      ;;
+    --dump-header)
+      headers_file="$2"
+      shift 2
+      ;;
+    --data|--header|--request|--write-out)
+      shift 2
+      ;;
+    --silent|--show-error|--location)
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+: "${CURL_SCENARIO:?CURL_SCENARIO must be set}"
+: "${FAKE_CURL_STATE:?FAKE_CURL_STATE must be set}"
+
+count=0
+if [ -f "$FAKE_CURL_STATE" ]; then
+  count="$(cat "$FAKE_CURL_STATE")"
+fi
+count=$((count + 1))
+printf '%s\n' "$count" > "$FAKE_CURL_STATE"
+
+status='200'
+headers='HTTP/1.1 200 OK\r\n'
+case "$CURL_SCENARIO" in
+  pass)
+    body='{"reachable":true,"valid":true,"grade":"pass","known":true,"origin":"https://agent.example","protocolVersions":["1.0"],"findings":[]}'
+    ;;
+  warn)
+    body='{"reachable":true,"valid":true,"grade":"warn","known":false,"origin":null,"protocol_versions":["1.0"],"findings":[{"code":"missing-name","severity":"warning","field":"name","detail":"Missing % value\nnext"}]}'
+    ;;
+  fail)
+    body='{"reachable":true,"valid":false,"grade":"fail","known":false,"origin":null,"protocolVersions":[],"findings":[{"code":"bad-card","severity":"error","field":"skills","detail":"A required field is missing"}]}'
+    ;;
+  rate-limit)
+    if [ "$count" -eq 1 ]; then
+      status='429'
+      headers='HTTP/1.1 429 Too Many Requests\r\nRetry-After: 0\r\n'
+      body='{"detail":"rate limited"}'
+    else
+      body='{"reachable":true,"valid":true,"grade":"pass","known":false,"origin":null,"protocolVersions":["1.0"],"findings":[]}'
+    fi
+    ;;
+  unavailable)
+    status='503'
+    headers='HTTP/1.1 503 Service Unavailable\r\n'
+    body='{"detail":"unavailable"}'
+    ;;
+  *)
+    printf 'Unknown fake curl scenario: %s\n' "$CURL_SCENARIO" >&2
+    exit 2
+    ;;
+esac
+
+printf '%b' "$headers" > "$headers_file"
+printf '%s' "$body" > "$output_file"
+printf '%s' "$status"

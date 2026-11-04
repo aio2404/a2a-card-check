@@ -1,0 +1,30 @@
+name: Self test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: a2a
+        uses: ./
+        with:
+          url: https://8004engine.vercel.app
+          fail-on: never
+      - name: Ensure the action returned a grade
+        run: test -n "${{ steps.a2a.outputs.grade }}"
+      - name: Run offline script tests
+        run: bash tests/run.sh
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint the action script
+        run: shellcheck scripts/check.sh
